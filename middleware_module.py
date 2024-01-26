@@ -4,6 +4,7 @@ from flask import request
 from confluent_kafka import Producer
 import json
 import time
+from werkzeug.wrappers import Request, Response
 
 messages = []
 
@@ -27,7 +28,9 @@ class KafkaMiddleware:
                 chunks.append(data)
 
             try:
+                response_headers = environ['headers']
                 content_type = response_headers.get('content-type')
+                print(response_headers.path)
                 if content_type and 'application/json' in content_type:
                     log_json = self.generate_log(request, response_headers, chunks, self.akto_account_id)
                     messages.append({'value': log_json})
@@ -38,7 +41,7 @@ class KafkaMiddleware:
             except Exception as e:
                 print(e)
 
-            old_end(data, *args, **kwargs)
+            old_end()
 
         old_write = start_response
         old_end = environ['wsgi.input'].close
@@ -52,17 +55,17 @@ class KafkaMiddleware:
         value = {
             'path': req.path,
             'requestHeaders': json.dumps(dict(req.headers)),
-            'responseHeaders': json.dumps(dict(res)),
+            'responseHeaders': json.dumps(dict(res.headers)),
             'method': req.method,
             'requestPayload': json.dumps(request.json),
             'responsePayload': body,
             'ip': req.headers.get('x-forwarded-for') or req.remote_addr,
             'time': str(int(time.time())),
-            'statusCode': res.status,
+            'statusCode': res.status_code,
             'type': f'HTTP/{req.environ.get("SERVER_PROTOCOL")}',
             'status': res.status,
             'akto_account_id': akto_account_id,
-            'contentType': res.get('content-type'),
+            'contentType': res.headers.get('content-type'),
         }
 
         return json.dumps(value)
